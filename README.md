@@ -18,7 +18,7 @@ A modern, fast, and pentester-friendly NFS client built for red teams, security 
 
 Repository: `github.com/AnvithLobo/EvilNFSClient`
 
-<img width="1062" height="551" alt="image" src="https://github.com/user-attachments/assets/87e7f22e-8c79-439f-a703-b0732f56ac5d" />
+<img width="1019" height="791" alt="image" src="https://github.com/user-attachments/assets/5794d315-01d7-47e7-b83b-2ffadc4abb4a" />
 
 ---
 
@@ -48,6 +48,7 @@ Repository: `github.com/AnvithLobo/EvilNFSClient`
   - [🔨 Build](#-build)
 - [⚙️ Usage \& options](#️-usage--options)
 - [💡 Tips \& behavior](#-tips--behavior)
+- [📌 Project Roadmap](#-project-roadmap)
 - [⚠️ Disclaimer](#️-disclaimer)
 - [👤 Author](#-author)
 - [📄 License](#-license)
@@ -93,7 +94,8 @@ go build -o evilnfsclient
 
 ## 🧰 Features
 
-<img width="1048" height="1002" alt="image" src="https://github.com/user-attachments/assets/54032c3b-05e8-4e7c-9caf-fc8641fa2cb3" />
+<img width="1062" height="551" alt="image" src="https://github.com/user-attachments/assets/87e7f22e-8c79-439f-a703-b0732f56ac5d" />
+
 
 ### 🌐 Remote NFS operations
 
@@ -172,8 +174,13 @@ nfs> lls
 ## 🧪 Examples
 
 ```bash
+# Connect to NFS server with the export /shared
 ./evilnfsclient 192.168.1.100 /shared
+# List available NFS exports on the server
+./evilnfsclient --list 192.168.1.100
+# Connect with overridden UID and GID
 ./evilnfsclient 192.168.1.100 /shared --uid 0 --gid 0
+# Run a single command non-interactively
 ./evilnfsclient 192.168.1.100 /shared -c "ls /"
 ```
 
@@ -244,6 +251,14 @@ Options:
 * `~` expansion supported
 * PgUp/PgDn scrolls output
 * Use `-r` with caution (recursive delete!)
+
+---
+
+## 📌 Project Roadmap
+
+- [X] **`Task 1`**: <strike>General NFS Commands.</strike>
+- [X] **`Task 2`**: <strike>List NFS Exports.</strike>
+- [ ] **`Task 3`**: Check for `Root File System Escape`.
 
 ---
 

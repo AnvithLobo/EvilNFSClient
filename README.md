@@ -1,5 +1,19 @@
-# EvilNFSClient 
+<div align="left" style="position: relative;">
+<img src="https://github.com/user-attachments/assets/8ff7308b-c6d4-454a-bba4-77f3c3409601" align="right" width="22%" style="margin: -20px 0 0 20px;">
+<h1>EvilNFSClient</h1>
 
+<p align="left">
+	<img src="https://img.shields.io/github/license/AnvithLobo/EvilNFSClient?style=for-the-badge&logo=opensourceinitiative&logoColor=white&color=0080ff" alt="license">
+	<img src="https://img.shields.io/github/last-commit/AnvithLobo/EvilNFSClient?style=for-the-badge&logo=git&logoColor=white&color=0080ff" alt="last-commit">
+	<img src="https://img.shields.io/github/languages/top/AnvithLobo/EvilNFSClient?style=for-the-badge&color=0080ff" alt="repo-top-language">
+	<img src="https://img.shields.io/github/languages/count/AnvithLobo/EvilNFSClient?style=for-the-badge&color=0080ff" alt="repo-language-count">
+</p>
+<p align="left">Built with the tools and technologies:</p>
+<p align="left">
+	<img src="https://img.shields.io/badge/Go-00ADD8.svg?style=for-the-badge&logo=Go&logoColor=white" alt="Go">
+</p>
+</div>
+<br clear="right">
 
 A modern, fast, and pentester-friendly NFS client built for red teams, security researchers, and anyone who wants full control over remote NFS exports — **without needing to mount them**.
 
@@ -11,34 +25,33 @@ Repository: `github.com/AnvithLobo/EvilNFSClient`
 
 ## 📑 Table of Contents
 
-- [EvilNFSClient](#evilnfsclient)
-  - [📑 Table of Contents](#-table-of-contents)
-  - [🚀 What it does](#-what-it-does)
-  - [⚡ Quick start](#-quick-start)
-    - [🔧 Build from source](#-build-from-source)
-    - [📥 Download binaries](#-download-binaries)
-  - [🧰 Features](#-features)
-    - [🌐 Remote NFS operations](#-remote-nfs-operations)
-    - [💻 Local operations (prefix `l`)](#-local-operations-prefix-l)
-    - [🎛️ Session control](#️-session-control)
-  - [📘 Commands (high level)](#-commands-high-level)
-    - [🔎 Navigation](#-navigation)
-    - [📤 Upload](#-upload)
-    - [📥 Download](#-download)
-    - [📦 Multi-file](#-multi-file)
-    - [🗂 Directory mgmt](#-directory-mgmt)
-    - [💻 Local commands](#-local-commands)
-  - [🧪 Examples](#-examples)
-  - [🔐 Permissions \& SUID/SGID Notes](#-permissions--suidsgid-notes)
-    - [Priv-Esc scenario](#priv-esc-scenario)
-  - [📦 Installation](#-installation)
-    - [🛠 Prerequisites](#-prerequisites)
-    - [🔨 Build](#-build)
-  - [⚙️ Usage \& options](#️-usage--options)
-  - [💡 Tips \& behavior](#-tips--behavior)
-  - [⚠️ Disclaimer](#️-disclaimer)
-  - [👤 Author](#-author)
-  - [📄 License](#-license)
+- [📑 Table of Contents](#-table-of-contents)
+- [🚀 What it does](#-what-it-does)
+- [⚡ Quick start](#-quick-start)
+  - [🔧 Build from source](#-build-from-source)
+  - [📥 Download binaries](#-download-binaries)
+- [🧰 Features](#-features)
+  - [🌐 Remote NFS operations](#-remote-nfs-operations)
+  - [💻 Local operations (prefix `l`)](#-local-operations-prefix-l)
+  - [🎛️ Session control](#️-session-control)
+- [📘 Commands (high level)](#-commands-high-level)
+  - [🔎 Navigation](#-navigation)
+  - [📤 Upload](#-upload)
+  - [📥 Download](#-download)
+  - [📦 Multi-file](#-multi-file)
+  - [🗂 Directory mgmt](#-directory-mgmt)
+  - [💻 Local commands](#-local-commands)
+- [🧪 Examples](#-examples)
+- [🔐 Permissions \& SUID/SGID Notes](#-permissions--suidsgid-notes)
+  - [Priv-Esc scenario](#priv-esc-scenario)
+- [📦 Installation](#-installation)
+  - [🛠 Prerequisites](#-prerequisites)
+  - [🔨 Build](#-build)
+- [⚙️ Usage \& options](#️-usage--options)
+- [💡 Tips \& behavior](#-tips--behavior)
+- [⚠️ Disclaimer](#️-disclaimer)
+- [👤 Author](#-author)
+- [📄 License](#-license)
 
 ---
 

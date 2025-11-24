@@ -1,0 +1,102 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build binaries
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # Linux builds
+          - os: linux
+            arch: x86
+            goos: linux
+            goarch: 386
+          - os: linux
+            arch: x64
+            goos: linux
+            goarch: amd64
+          - os: linux
+            arch: arm64
+            goos: linux
+            goarch: arm64
+
+          # Windows builds
+          - os: windows
+            arch: x86
+            goos: windows
+            goarch: 386
+          - os: windows
+            arch: x64
+            goos: windows
+            goarch: amd64
+          - os: windows
+            arch: arm64
+            goos: windows
+            goarch: arm64
+
+          # macOS builds
+          - os: macos
+            arch: x64
+            goos: darwin
+            goarch: amd64
+          - os: macos
+            arch: arm64
+            goos: darwin
+            goarch: arm64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '>1.25.0'
+
+      - name: Print build info
+        run: |
+          echo "GOOS=${{ matrix.goos }}"
+          echo "GOARCH=${{ matrix.goarch }}"
+          go version
+
+      - name: Build binary (no archive)
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          set -euo pipefail
+
+          PLATFORM="${{ matrix.goos }}"
+          ARCH="${{ matrix.arch }}"
+          EXT=""
+          if [ "${PLATFORM}" = "windows" ]; then EXT=".exe"; fi
+
+          OUT_NAME="evilnfsclient-${PLATFORM}-${ARCH}${EXT}"
+          DISTDIR="dist"
+          mkdir -p "${DISTDIR}"
+
+          # Linker flags reduce size and remove debug symbols.
+          LDFLAGS="-s -w"
+
+          echo "Building ${OUT_NAME} ..."
+          go build -trimpath -ldflags="${LDFLAGS}" -o "${OUT_NAME}" .
+
+          # Move binary into dist/ (no zip/tar)
+          mv "${OUT_NAME}" "${DISTDIR}/"
+
+          # Show size of produced binary
+          ls -lh "${DISTDIR}/${OUT_NAME}" || true
+
+      - name: Upload binaries to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

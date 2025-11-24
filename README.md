@@ -6,7 +6,6 @@
 	<img src="https://img.shields.io/github/license/AnvithLobo/EvilNFSClient?style=for-the-badge&logo=opensourceinitiative&logoColor=white&color=0080ff" alt="license">
 	<img src="https://img.shields.io/github/last-commit/AnvithLobo/EvilNFSClient?style=for-the-badge&logo=git&logoColor=white&color=0080ff" alt="last-commit">
 	<img src="https://img.shields.io/github/languages/top/AnvithLobo/EvilNFSClient?style=for-the-badge&color=0080ff" alt="repo-top-language">
-	<img src="https://img.shields.io/github/languages/count/AnvithLobo/EvilNFSClient?style=for-the-badge&color=0080ff" alt="repo-language-count">
 </p>
 <p align="left">Built with the tools and technologies:</p>
 <p align="left">

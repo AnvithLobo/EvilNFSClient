@@ -45,7 +45,7 @@ var (
 	HelpSectionStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#04B575")).
 				Bold(true).
-				MarginTop(1).
+				MarginTop(0).
 				MarginBottom(1)
 
 	HelpDescStyle = lipgloss.NewStyle().
@@ -63,4 +63,17 @@ var (
 	HelpExampleBgStyle = lipgloss.NewStyle().
 				Background(lipgloss.Color("#1A1A1A")).
 				Foreground(lipgloss.Color("#00FF00"))
+
+	UsageStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#A89BFF"))
+
+	BoxStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			Padding(0, 2).
+			MarginTop(0).
+			MarginBottom(0)
+
+	ExamplesSmallStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#BFBFBF")).
+				Faint(true)
 )

@@ -2,60 +2,94 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
-	"strconv"
+	"strings"
 
 	"github.com/AnvithLobo/EvilNFSClient/pkg/nfs"
 	"github.com/AnvithLobo/EvilNFSClient/pkg/ui"
 	"github.com/AnvithLobo/EvilNFSClient/pkg/ui/styles"
+	nfslib "github.com/AnvithLobo/nfsv3/nfs"
+	argparse "github.com/akamensky/argparse"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
 func main() {
-	// Check for help flag first
-	for _, arg := range os.Args[1:] {
-		if arg == "-h" || arg == "--help" {
-			printUsage()
-			os.Exit(0)
-		}
+
+	// preliminary arg validation
+	checkValidArgs()
+
+	parser := argparse.NewParser("evilnfscommand", "Connect to an NFS export and optionally run commands or a TUI")
+
+	parser.HelpFunc = func(c *argparse.Command, msg interface{}) string {
+		printUsage(false)
+		return ""
 	}
 
-	if len(os.Args) < 3 {
-		printUsage()
+	listFlag := parser.Flag("l", "list", &argparse.Options{Help: "List NFS exports on the given server and exit"})
+	uidFlag := parser.Int("u", "uid", &argparse.Options{Help: "UID to use for the connection (overrides default)"})
+	gidFlag := parser.Int("g", "gid", &argparse.Options{Help: "GID to use for the connection (overrides default)"})
+	cmdFlag := parser.String("c", "cmd", &argparse.Options{Help: "Non-interactive command to run"})
+	helpFlag := parser.Flag("h", "help", &argparse.Options{Help: "Show help"})
+
+	// Positional args: server (required), export (optional if --list)
+	serverPos := parser.StringPositional(&argparse.Options{Required: true, Help: "NFS server IP/hostname"})
+	exportPos := parser.StringPositional(&argparse.Options{Required: false, Help: "Export path on the NFS server"})
+
+	if err := parser.Parse(os.Args); err != nil {
+		// Print usage with error context
+		printUsage(true)
+		fmt.Fprintln(os.Stderr, styles.ErrorStyle.Render(err.Error()))
+		os.Exit(2)
+	}
+
+	if *helpFlag {
+		printUsage(false)
+		return
+	}
+
+	// Check if the server argument is provided
+	if serverPos == nil || *serverPos == "" {
+		printUsage(true)
+		fmt.Fprintln(os.Stderr, styles.ErrorStyle.Render("Missing server argument."))
+		fmt.Fprintln(os.Stderr)
+		os.Exit(2)
+	}
+
+	server := *serverPos
+
+	// If user asked to list exports, do that and exit
+	if *listFlag {
+		listNFSExports(server)
+		os.Exit(0)
+	}
+
+	// For normal mode we need an export argument
+	if exportPos == nil || *exportPos == "" {
+		printUsage(true)
+		fmt.Fprintln(os.Stderr, styles.ErrorStyle.Render("Missing export path."))
+		fmt.Fprintln(os.Stderr)
 		os.Exit(1)
 	}
+	export := *exportPos
 
-	server := os.Args[1]
-	export := os.Args[2]
+	var uid uint32 = uint32(os.Getuid())
+	var gid uint32 = uint32(os.Getgid())
 
-	uid := uint32(os.Getuid())
-	gid := uint32(os.Getgid())
-	var command string
-
-	// Parse optional arguments
-	for i := 3; i < len(os.Args); i++ {
-		switch os.Args[i] {
-		case "--uid":
-			if i+1 < len(os.Args) {
-				val, _ := strconv.ParseUint(os.Args[i+1], 10, 32)
-				uid = uint32(val)
-				i++
-			}
-		case "--gid":
-			if i+1 < len(os.Args) {
-				val, _ := strconv.ParseUint(os.Args[i+1], 10, 32)
-				gid = uint32(val)
-				i++
-			}
-		case "-c":
-			if i+1 < len(os.Args) {
-				command = os.Args[i+1]
-				i++
-			}
-		}
+	if uidFlag != nil {
+		uid = uint32(*uidFlag)
+	}
+	if gidFlag != nil {
+		gid = uint32(*gidFlag)
 	}
 
+	var command string
+	if cmdFlag != nil {
+		command = *cmdFlag
+	}
+
+	// Initialize NFS client
 	client, err := nfs.NewNFSClient(server, export, uid, gid)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -80,87 +114,200 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Print all buffered output to stdout so it persists after TUI closes
+	// Print buffered output after TUI closes
 	if finalModelCast, ok := finalModel.(ui.TUIModel); ok {
-		// Print header
 		fmt.Println(styles.TitleStyle.Render("🔥 EvilNFSClient"))
-		fmt.Println(lipgloss.NewStyle().Faint(true).Render(fmt.Sprintf("Connected to %s:%s (UID: %d, GID: %d) | Path: %s",
-			finalModelCast.Client.Server, finalModelCast.Client.Export, finalModelCast.Client.UID, finalModelCast.Client.GID, finalModelCast.Client.CurrentPath)))
+		fmt.Println(lipgloss.NewStyle().Faint(true).Render(fmt.Sprintf(
+			"Connected to %s:%s (UID: %d, GID: %d) | Path: %s",
+			finalModelCast.Client.Server,
+			finalModelCast.Client.Export,
+			finalModelCast.Client.UID,
+			finalModelCast.Client.GID,
+			finalModelCast.Client.CurrentPath,
+		)))
 		fmt.Println()
 
-		// Print all buffered output
 		for _, line := range finalModelCast.Output {
 			fmt.Println(line)
 		}
 
-		// Print goodbye message
 		fmt.Println(styles.SuccessStyle.Render("Goodbye!"))
 	}
 }
 
-func printUsage() {
+func listNFSExports(server string) {
+
+	// Fetch exports
+	fmt.Printf("Fetching exports from %s...\n\n", server)
+
+	fmt.Println(styles.HelpTitleStyle.Render("🔥 EvilNFSClient"))
+
+	exports, err := nfslib.GetExports(server)
+	if err != nil {
+		log.Fatalf("Error listing exports: %v", err)
+	}
+
+	// Header/title inside the box
+	header := styles.HelpSectionStyle.Render("EXPORTS")
+
+	// Build table header (colored)
+	leftColTitle := styles.HelpArgStyle.Render(fmt.Sprintf("%-40s", "EXPORT"))
+	rightColTitle := styles.HelpOptStyle.Render("ALLOWED CLIENTS")
+	tableLines := []string{leftColTitle + " " + rightColTitle}
+	tableLines = append(tableLines, strings.Repeat("─", 80-4)) // separator
+
+	// Build rows
+	for _, e := range exports {
+		clients := "*"
+		if len(e.Groups) > 0 {
+			clients = fmt.Sprintf("%v", e.Groups)
+		}
+
+		// style columns: export path (DirStyle), clients (HelpDescStyle)
+		left := styles.DirStyle.Render(fmt.Sprintf("%-40s", e.Dir))
+		right := styles.HelpDescStyle.Render(clients)
+
+		tableLines = append(tableLines, left+" "+right)
+	}
+
+	tableContent := lipgloss.JoinVertical(lipgloss.Left, tableLines...)
+
+	// Compose box content with the header at top (gives a titled-box appearance)
+	boxContent := header + "\n\n" + tableContent
+
+	// Render full-width box (minus 2 for border glyphs)
+	box := styles.BoxStyle.
+		BorderForeground(lipgloss.Color("#4B9BFF")).
+		Width(80).
+		Render(boxContent)
+
+	fmt.Println(box)
+	fmt.Println() // trailing newline
+}
+
+func printUsage(short bool) {
 	fmt.Print("\n")
 	fmt.Println(styles.HelpTitleStyle.Render("🔥 EvilNFSClient"))
-	fmt.Println(styles.HelpDescStyle.Render("Modern NFS Client for Hackers"))
+	fmt.Println(styles.HelpDescStyle.Render("Modern NFS mount browser and file manager"))
 	fmt.Print("\n")
 
-	// Usage section
-	fmt.Println(styles.HelpSectionStyle.Render("USAGE"))
-	usageBox := lipgloss.NewStyle().
-		Margin(0, 2).
-		Foreground(lipgloss.Color("#A89BFF"))
-	fmt.Println(usageBox.Render("evilnfsclient <server> <export> [OPTIONS]"))
-	fmt.Print("\n")
+	termWidth := styles.TerminalWidth()
 
-	// Arguments section
-	fmt.Println(styles.HelpSectionStyle.Render("ARGUMENTS"))
-	argBox := lipgloss.NewStyle().Margin(0, 2)
-	fmt.Println(argBox.Render(
-		styles.HelpArgStyle.Render("  SERVER") + "\n" +
-			styles.HelpDescStyle.Render("    NFS server address (IP or hostname)") + "\n" +
-			"\n" +
-			styles.HelpArgStyle.Render("  EXPORT") + "\n" +
-			styles.HelpDescStyle.Render("    NFS export path (e.g., /shared, /mnt/nfs)"),
-	))
-	fmt.Print("\n")
+	// ----------------
+	// USAGE (boxed)
+	// ----------------
 
-	// Options section
-	fmt.Println(styles.HelpSectionStyle.Render("OPTIONS"))
-	optBox := lipgloss.NewStyle().Margin(0, 2)
-	fmt.Println(optBox.Render(
-		styles.HelpOptStyle.Render("  --uid <UID>") + "\n" +
-			styles.HelpDescStyle.Render("    Set user ID for NFS operations (default: current user)") + "\n" +
-			"\n" +
-			styles.HelpOptStyle.Render("  --gid <GID>") + "\n" +
-			styles.HelpDescStyle.Render("    Set group ID for NFS operations (default: current group)") + "\n" +
-			"\n" +
-			styles.HelpOptStyle.Render("  -c, --command <COMMAND>") + "\n" +
-			styles.HelpDescStyle.Render("    Execute single command without interactive TUI mode"),
-	))
-	fmt.Print("\n")
+	usageHeader := styles.HelpSectionStyle.Render("USAGE")
+	connectLine := styles.HelpArgStyle.Render(" Connect") + "\n" +
+		styles.UsageStyle.Render("    evilnfsclient <server> <export> [OPTIONS]")
+	listLine := styles.HelpArgStyle.Render(" List") + "\n" +
+		styles.UsageStyle.Render("    evilnfsclient --list <server>")
+	usageContent := lipgloss.JoinVertical(lipgloss.Left, connectLine, "", listLine)
 
-	// Examples section
-	fmt.Println(styles.HelpSectionStyle.Render("EXAMPLES"))
+	fmt.Println(styles.BoxStyle.Width(termWidth - 2).
+		BorderForeground(lipgloss.Color("#4B9BFF")).
+		Foreground(lipgloss.Color("#E0E0E0")).
+		Render(usageHeader + "\n" + usageContent))
 
-	fmt.Println(styles.HelpDescStyle.Render("  Interactive mode with default user:"))
-	fmt.Println(styles.HelpExampleBgStyle.Render("    $ evilnfsclient 192.168.1.100 /shared"))
-	fmt.Print("\n")
+	// ----------------
+	// ARGUMENTS (boxed)
+	// ----------------
+	argHeader := styles.HelpSectionStyle.Render("ARGUMENTS")
+	argContent := styles.HelpArgStyle.Render("  SERVER") + "\n" +
+		styles.HelpDescStyle.Render("    NFS server address (IP or hostname)") + "\n\n" +
+		styles.HelpArgStyle.Render("  EXPORT") + "\n" +
+		styles.HelpDescStyle.Render("    NFS export path (e.g., /shared, /mnt/nfs)")
 
-	fmt.Println(styles.HelpDescStyle.Render("  Connect with specific UID/GID:"))
-	fmt.Println(styles.HelpExampleBgStyle.Render("    $ evilnfsclient 192.168.1.100 /shared --uid 1000 --gid 1000"))
-	fmt.Print("\n")
+	fmt.Println(styles.BoxStyle.Width(termWidth - 2).
+		BorderForeground(lipgloss.Color("#04B575")).
+		Foreground(lipgloss.Color("#E0E0E0")).
+		Render(argHeader + "\n" + argContent))
 
-	fmt.Println(styles.HelpDescStyle.Render("  Execute single command:"))
-	fmt.Println(styles.HelpExampleBgStyle.Render("    $ evilnfsclient 192.168.1.100 /shared -c 'ls /'"))
-	fmt.Print("\n")
+	// ----------------
+	// OPTIONS (boxed)
+	// ----------------
+	optHeader := styles.HelpSectionStyle.Render("OPTIONS")
+	optContent := styles.HelpOptStyle.Render("  -l, --list ") + "\n" +
+		styles.HelpDescStyle.Render("    List NFS exports on the given server and exit") + "\n\n" +
+		styles.HelpOptStyle.Render("  -u, --uid <UID>") + "\n" +
+		styles.HelpDescStyle.Render("    Set user ID for NFS operations (default: current user)") + "\n\n" +
+		styles.HelpOptStyle.Render("  -g, --gid <GID>") + "\n" +
+		styles.HelpDescStyle.Render("    Set group ID for NFS operations (default: current group)") + "\n\n" +
+		styles.HelpOptStyle.Render("  -c, --command <COMMAND>") + "\n" +
+		styles.HelpDescStyle.Render("    Execute single command without interactive TUI mode")
 
-	fmt.Println(styles.HelpDescStyle.Render("  Download a directory recursively:"))
-	fmt.Println(styles.HelpExampleBgStyle.Render("    $ evilnfsclient 192.168.1.100 /shared -c 'get /data -r'"))
-	fmt.Print("\n")
+	fmt.Println(styles.BoxStyle.Width(termWidth - 2).
+		BorderForeground(lipgloss.Color("#4B9BFF")).
+		Foreground(lipgloss.Color("#E0E0E0")).
+		Render(optHeader + "\n" + optContent))
 
-	// print help example
-	fmt.Println(styles.HelpDescStyle.Render("  Get help information for NFS operations:"))
-	fmt.Println(styles.HelpExampleBgStyle.Render("    $ evilnfsclient 192.168.1.100 /shared -c 'help'"))
-	fmt.Print("\n")
+	// ----------------
+	// EXAMPLES (boxed and titled)
+	// ----------------
 
+	// show examples only if short is set to false
+	if short {
+		return
+	}
+
+	exHeader := styles.HelpSectionStyle.Render("EXAMPLES")
+	examples := lipgloss.JoinVertical(lipgloss.Left,
+		styles.HelpDescStyle.Render("Interactive mode with default user:"),
+		styles.ExamplesSmallStyle.Render("  $ evilnfsclient 192.168.1.100 /shared"),
+		"",
+		styles.HelpDescStyle.Render("List NFS exports on a server:"),
+		styles.ExamplesSmallStyle.Render("  $ evilnfsclient --list 192.168.1.100"),
+		"",
+		styles.HelpDescStyle.Render("Connect with specific UID/GID:"),
+		styles.ExamplesSmallStyle.Render("  $ evilnfsclient 192.168.1.100 /shared --uid 1000 --gid 1000"),
+		"",
+		styles.HelpDescStyle.Render("Execute a single command:"),
+		styles.ExamplesSmallStyle.Render("  $ evilnfsclient 192.168.1.100 /shared -c 'ls /'"),
+		"",
+		styles.HelpDescStyle.Render("Download a directory recursively:"),
+		styles.ExamplesSmallStyle.Render("  $ evilnfsclient 192.168.1.100 /shared -c 'get /data -r'"),
+		"",
+		styles.HelpDescStyle.Render("Get help for commands:"),
+		styles.ExamplesSmallStyle.Render("  $ evilnfsclient 192.168.1.100 /shared -c 'help'"),
+	)
+
+	// Put the header inside the box for a titled-box look
+	fmt.Println(styles.BoxStyle.Width(termWidth - 2).
+		BorderForeground(lipgloss.Color("#AAAAFF")).
+		Foreground(lipgloss.Color("#D0D0D0")).
+		Render(exHeader + "\n" + examples))
+
+}
+
+func checkValidArgs() {
+	allowedFlags := map[string]struct{}{
+		"-l": {}, "--list": {},
+		"-u": {}, "--uid": {},
+		"-g": {}, "--gid": {},
+		"-c": {}, "--cmd": {},
+		"-h": {}, "--help": {},
+	}
+
+	// parse only the arguments (not argv[0])
+	rawArgs := os.Args[1:]
+
+	// quick pass to detect unknown flags (helpful UX)
+	// we allow flag values after a flag (simple heuristic: values not starting with '-')
+	for i := 0; i < len(rawArgs); i++ {
+		a := rawArgs[i]
+		if strings.HasPrefix(a, "-") {
+			// handle combined short flags like -abc? (we don't support), treat whole token
+			// if flag is in allowed set, skip potential value afterwards for flags that expect one
+			if _, ok := allowedFlags[a]; !ok {
+				printUsage(true)
+				fmt.Fprintln(os.Stderr, styles.ErrorStyle.Render(fmt.Sprintf("Unknown flag: %s", a)))
+				fmt.Fprintln(os.Stderr)
+				os.Exit(2)
+			}
+			// if it's a flag that takes a value, skip the next token (value) so we don't treat it as a flag
+			if a == "-u" || a == "--uid" || a == "-g" || a == "--gid" || a == "-c" || a == "--cmd" {
+				i++ // skip next token (if missing, parser.Parse will catch it)
+			}
+		}
+	}
 }

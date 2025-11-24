@@ -1,6 +1,7 @@
-# EvilNFSClient
+# EvilNFSClient 
 
-A focused NFS client for security researchers and pentesters that makes direct manipulation of NFS-mounted filesystems easy — including operations that help test post-exploitation and NFS-based privilege escalation scenarios.
+
+A modern, fast, and pentester-friendly NFS client built for red teams, security researchers, and anyone who wants full control over remote NFS exports — **without needing to mount them**.
 
 Repository: `github.com/AnvithLobo/EvilNFSClient`
 
@@ -8,97 +9,109 @@ Repository: `github.com/AnvithLobo/EvilNFSClient`
 
 ---
 
-## Table of contents
+## 📑 Table of Contents
 
 - [EvilNFSClient](#evilnfsclient)
-  - [Table of contents](#table-of-contents)
-  - [What it does](#what-it-does)
-  - [Quick start](#quick-start)
-  - [Features](#features)
-    - [Remote NFS operations](#remote-nfs-operations)
-    - [Local operations (prefix `l`)](#local-operations-prefix-l)
-    - [Session control](#session-control)
-  - [Commands (high level)](#commands-high-level)
-  - [Examples](#examples)
-  - [Permissions \& SUID/SGID notes](#permissions--suidsgid-notes)
-  - [Installation](#installation)
-    - [Prerequisites](#prerequisites)
-    - [Build](#build)
-  - [Usage \& options](#usage--options)
-  - [Tips \& behavior](#tips--behavior)
-  - [Disclaimer \& legal](#disclaimer--legal)
-  - [Author](#author)
-  - [License](#license)
+  - [📑 Table of Contents](#-table-of-contents)
+  - [🚀 What it does](#-what-it-does)
+  - [⚡ Quick start](#-quick-start)
+    - [🔧 Build from source](#-build-from-source)
+    - [📥 Download binaries](#-download-binaries)
+  - [🧰 Features](#-features)
+    - [🌐 Remote NFS operations](#-remote-nfs-operations)
+    - [💻 Local operations (prefix `l`)](#-local-operations-prefix-l)
+    - [🎛️ Session control](#️-session-control)
+  - [📘 Commands (high level)](#-commands-high-level)
+    - [🔎 Navigation](#-navigation)
+    - [📤 Upload](#-upload)
+    - [📥 Download](#-download)
+    - [📦 Multi-file](#-multi-file)
+    - [🗂 Directory mgmt](#-directory-mgmt)
+    - [💻 Local commands](#-local-commands)
+  - [🧪 Examples](#-examples)
+  - [🔐 Permissions \& SUID/SGID Notes](#-permissions--suidsgid-notes)
+    - [Priv-Esc scenario](#priv-esc-scenario)
+  - [📦 Installation](#-installation)
+    - [🛠 Prerequisites](#-prerequisites)
+    - [🔨 Build](#-build)
+  - [⚙️ Usage \& options](#️-usage--options)
+  - [💡 Tips \& behavior](#-tips--behavior)
+  - [⚠️ Disclaimer](#️-disclaimer)
+  - [👤 Author](#-author)
+  - [📄 License](#-license)
 
 ---
 
-## What it does
+## 🚀 What it does
 
-EvilNFSClient is a terminal-based NFS client that exposes filesystem operations on an NFS export with convenience features useful for red team / pentest workflows or just as a quick CLI based NFS file manager without the overhead of mounting.:
+EvilNFSClient is a **TUI-powered**, and **powerful** NFS client designed for offensive security workflows and regular use.
 
-* read/write/delete files and directories
-* recursive upload/download (preserve tree structures)
-* directly set SUID, SGID and sticky bits
-* colorized, aligned directory listings for quick scanning
-* interactive shell with command history and paging
+Use it as:
+
+* A **post-exploitation helper**
+* A **privilege escalation tool**
+* A **standalone NFS file manager** (no mount needed!)
+* A **fast recursive uploader/downloader**
+
+✨ Features at a glance:
+
+* Full file manipulation (read, write, delete)
+* Upload/download directories with `-r`
+* Set **SUID/SGID/Sticky bit** permissions
+* Interactive shell with history + scrolling
 
 ---
 
-## Quick start
+## ⚡ Quick start
 
-- Build it yourself:
+### 🔧 Build from source
 
 ```bash
-git clone github.com/AnvithLobo/EvilNFSClient
+git clone https://github.com/AnvithLobo/EvilNFSClient
 cd EvilNFSClient
 go build -o evilnfsclient
 ./evilnfsclient <server-ip> <export-path>
 ```
 
+### 📥 Download binaries
 
-- Or download pre-built binaries from the [releases page](https://github.com/AnvithLobo/EvilNFSClient/packages).
-
-
+➡️ Pre-built releases: **[https://github.com/AnvithLobo/EvilNFSClient/releases](https://github.com/AnvithLobo/EvilNFSClient/releases)**
 
 ---
 
-## Features
+## 🧰 Features
 
 <img width="1048" height="1002" alt="image" src="https://github.com/user-attachments/assets/54032c3b-05e8-4e7c-9caf-fc8641fa2cb3" />
 
+### 🌐 Remote NFS operations
 
-### Remote NFS operations
+* `ls [path]` — colorized directory listing
+* `cd <path>` — switch directories
+* `tree [path]` — recursive view
+* `get [-r] <remote> [<local>]` — download
+* `mget <pattern> [<dest_dir>]` — multi-download
+* `put [-r] <local> [<remote>]` — upload
+* `mput <pattern> [<dest_path>]` — multi-upload
+* `rm [-r] <path>` — delete files/folders
+* `mkdir [-p] <path>` — create directories
+* `chmod <mode> <file>` — permission editing w/ SUID/SGID
 
-* `ls [path]` — list remote directory (colorized)
-* `cd <path>` — change remote working dir
-* `tree [path]` — recursive tree view
-* `get [-r] <remote> [<local>]` — download file/dir
-* `mget <pattern> [<dest_dir>]` — download by glob
-* `put [-r] <local> [<remote>]` — upload file/dir
-* `mput <pattern> [<dest_path>]` — upload multiple local files
-* `rm [-r] <path>` — remove file/dir
-* `mkdir [-p] <path>` — create directory
-* `chmod <mode> <file>` — set permission bits including SUID/SGID/sticky
-
-### Local operations (prefix `l`)
+### 💻 Local operations (prefix `l`)
 
 * `lls [path]`, `lcd <path>`, `lmkdir [-p] <path>`
 
+### 🎛️ Session control
 
-
-### Session control
-
-* `help`, `exit`/`quit`
-* arrow keys for history, PgUp/PgDn for scroll
-* Ctrl+C to quit
+* `help`  → show commands
+* Arrow keys → history
+* PgUp/PgDn → scroll
+* `Ctrl + C`, `exit`, `quit` → exit
 
 ---
 
-## Commands (high level)
+## 📘 Commands (high level)
 
-Show common usage patterns inside the interactive shell.
-
-Navigation & exploration:
+### 🔎 Navigation
 
 ```bash
 nfs> ls
@@ -106,35 +119,35 @@ nfs> cd public
 nfs> tree
 ```
 
-File transfer:
+### 📤 Upload
 
 ```bash
-# upload
 nfs> put /tmp/shell.sh payload.sh
-
-# download
-nfs> get payload.sh ./downloaded.sh
-
-# recursive upload/download
 nfs> put -r ./tools /shared/tools
+```
+
+### 📥 Download
+
+```bash
+nfs> get payload.sh ./downloaded.sh
 nfs> get -r /shared/sensitive /tmp/data
 ```
 
-Batch transfers (globs):
+### 📦 Multi-file
 
 ```bash
 nfs> mget *.log ./logs/
 nfs> mput /tmp/*.elf /shared/payloads/
 ```
 
-Directory management:
+### 🗂 Directory mgmt
 
 ```bash
 nfs> mkdir -p /shared/a/b/c
 nfs> rm -r /shared/old_stuff
 ```
 
-Local commands:
+### 💻 Local commands
 
 ```bash
 nfs> lcd /tmp
@@ -144,56 +157,51 @@ nfs> lls
 
 ---
 
-## Examples
-
-Interactive (default UID/GID):
+## 🧪 Examples
 
 ```bash
 ./evilnfsclient 192.168.1.100 /shared
-```
-
-Interactive (custom UID/GID):
-
-```bash
 ./evilnfsclient 192.168.1.100 /shared --uid 0 --gid 0
-```
-
-Non-interactive (single command):
-
-```bash
 ./evilnfsclient 192.168.1.100 /shared -c "ls /"
 ```
 
 ---
 
-## Permissions & SUID/SGID notes
+## 🔐 Permissions & SUID/SGID Notes
 
-`chmod` supports standard octal modes and honor SUID/SGID/sticky bits:
+Supported modes include full SUID, SGID, and sticky bit manipulation.
 
-* `chmod 4755 /shared/binary` → SUID set (`-rwsr-xr-x`)
-* `chmod 2755 /shared/binary` → SGID set (`-rwxr-sr-x`)
-* `chmod 6777 /shared/binary` → combined special bits (`-rwsrwsrwx`)
+Examples:
 
-**Security note:** setting SUID/SGID on binaries can enable privilege escalation when executed on a system that honors those bits. The client manipulates the NFS export entries; whether the target system executes with escalated privileges depends on the target host and its mount/OS behavior.
+* `chmod 4755 file` → **SUID**
+* `chmod 2755 file` → **SGID**
+* `chmod 6777 file` → **SUID + SGID**
 
-Example (create SUID binary):
+### Priv-Esc scenario
 
 ```bash
 nfs> put ./shell /shared/shell
 nfs> chmod 6755 /shared/shell
-# On the target host: /shared/shell  -> may run with owner privileges
 ```
+
+Then on the target:
+
+```bash
+/shared/shell
+```
+
+⚠️ Whether the target honors SUID/SGID over NFS depends on mount + OS settings.
 
 ---
 
-## Installation
+## 📦 Installation
 
-### Prerequisites
+### 🛠 Prerequisites
 
-* Go 1.24.x or later
-* Network access to the NFS server/export
+* Go 1.24.x+
+* Access to NFS server/export
 
-### Build
+### 🔨 Build
 
 ```bash
 git clone https://github.com/AnvithLobo/EvilNFSClient
@@ -203,7 +211,7 @@ go build -o evilnfsclient
 
 ---
 
-## Usage & options
+## ⚙️ Usage & options
 
 ```bash
 ./evilnfsclient <server> <export> [options]
@@ -211,23 +219,23 @@ go build -o evilnfsclient
 
 Options:
 
-* `--uid <uid>` — run NFS ops as this UID (default: your current UID)
-* `--gid <gid>` — run NFS ops as this GID (default: your current GID)
-* `-c <command>` — execute command and exit (non-interactive)
+* `--uid <uid>` — override UID
+* `--gid <gid>` — override GID
+* `-c <cmd>` — run command (non-interactive)
 
 ---
 
-## Tips & behavior
+## 💡 Tips & behavior
 
-* Relative remote paths resolve against the current remote directory.
-* Relative local paths resolve against the current local working directory.
-* Home expansion (`~`) is supported for local paths.
-* Long outputs can be paged with PgUp/PgDn; use command history to re-run previous commands quickly.
-* Use `-r` carefully on `rm` / `put` / `get` — recursive operations are powerful and destructive.
+* Remote paths → resolved against remote CWD
+* Local paths → resolved against local CWD
+* `~` expansion supported
+* PgUp/PgDn scrolls output
+* Use `-r` with caution (recursive delete!)
 
 ---
 
-## Disclaimer & legal
+## ⚠️ Disclaimer
 
 This tool is intended strictly for authorized security testing and penetration testing. Unauthorized access to computer systems, networks, or data is illegal. Use EvilNFSClient **only** on systems you own or for which you have explicit permission.
 
@@ -235,13 +243,16 @@ By using this software you accept responsibility for your actions.
 
 ---
 
-## Author
+## 👤 Author
 
-Anvith Lobo — [@AnvithLobo](https://github.com/AnvithLobo)
-
-## License
-
-See `LICENSE` in this repository for license details.
-
+**Anvith Lobo** — [https://github.com/AnvithLobo](https://github.com/AnvithLobo)
 
 ---
+
+## 📄 License
+
+See `LICENSE` for details.
+
+---
+
+✨ *Built for red teamers and power users who need full control over NFS exports.*

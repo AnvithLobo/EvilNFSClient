@@ -25,7 +25,7 @@ type NFSClient struct {
 func NewNFSClient(server, export string, uid, gid uint32) (*NFSClient, error) {
 	auth := rpc.NewAuthUnix("evilnfs", uid, gid)
 
-	mount, err := nfs.DialMount(server, true)
+	mount, err := nfs.DialMount(server, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial MOUNT service: %v", err)
 	}

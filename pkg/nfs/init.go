@@ -22,10 +22,10 @@ type NFSClient struct {
 }
 
 // NewNFSClient creates and returns a new NFS client connection
-func NewNFSClient(server, export string, uid, gid uint32) (*NFSClient, error) {
-	auth := rpc.NewAuthUnix("evilnfs", uid, gid)
+func NewNFSClient(server, export string, uid, gid uint32, privPort bool) (*NFSClient, error) {
+	auth := rpc.NewAuthUnix("root", uid, gid)
 
-	mount, err := nfs.DialMount(server, false)
+	mount, err := nfs.DialMount(server, privPort)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial MOUNT service: %v", err)
 	}

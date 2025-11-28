@@ -32,6 +32,7 @@ func main() {
 	gidFlag := parser.Int("g", "gid", &argparse.Options{Help: "GID to use for the connection (overrides default)"})
 	cmdFlag := parser.String("c", "cmd", &argparse.Options{Help: "Non-interactive command to run"})
 	helpFlag := parser.Flag("h", "help", &argparse.Options{Help: "Show help"})
+	privPort := parser.Flag("p", "privport", &argparse.Options{Help: "Use privileged port for NFS connection (may require root)"})
 
 	// Positional args: server (required), export (optional if --list)
 	serverPos := parser.StringPositional(&argparse.Options{Required: true, Help: "NFS server IP/hostname"})
@@ -90,7 +91,7 @@ func main() {
 	}
 
 	// Initialize NFS client
-	client, err := nfs.NewNFSClient(server, export, uid, gid)
+	client, err := nfs.NewNFSClient(server, export, uid, gid, *privPort)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -234,8 +235,9 @@ func printUsage(short bool) {
 		styles.HelpOptStyle.Render("  -g, --gid <GID>") + "\n" +
 		styles.HelpDescStyle.Render("    Set group ID for NFS operations (default: current group)") + "\n\n" +
 		styles.HelpOptStyle.Render("  -c, --command <COMMAND>") + "\n" +
-		styles.HelpDescStyle.Render("    Execute single command without interactive TUI mode")
-
+		styles.HelpDescStyle.Render("    Execute single command without interactive TUI mode") + "\n\n" +
+		styles.HelpOptStyle.Render("  -p, --privport ") + "\n" +
+		styles.HelpDescStyle.Render("    Use privileged port for NFS connection (may require root)")
 	fmt.Println(styles.BoxStyle.Width(termWidth - 2).
 		BorderForeground(lipgloss.Color("#4B9BFF")).
 		Foreground(lipgloss.Color("#E0E0E0")).
@@ -286,6 +288,7 @@ func checkValidArgs() {
 		"-g": {}, "--gid": {},
 		"-c": {}, "--cmd": {},
 		"-h": {}, "--help": {},
+		"-p": {}, "--privport": {},
 	}
 
 	// parse only the arguments (not argv[0])

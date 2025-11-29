@@ -194,6 +194,10 @@ func printUsage(short bool) {
 
 	termWidth := styles.TerminalWidth()
 
+	if termWidth > 80 {
+		termWidth = 80
+	}
+
 	// ----------------
 	// USAGE (boxed)
 	// ----------------

@@ -19,6 +19,13 @@ type NFSClient struct {
 	GID         uint32
 	CurrentPath string
 	localPath   string // Current working directory on the local system
+	progressFn  ProgressFunc
+}
+
+// SetProgressFunc sets a callback that is called periodically during file transfers.
+// Pass nil to disable progress reporting.
+func (c *NFSClient) SetProgressFunc(fn ProgressFunc) {
+	c.progressFn = fn
 }
 
 // NewNFSClient creates and returns a new NFS client connection

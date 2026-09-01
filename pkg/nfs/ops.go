@@ -222,6 +222,15 @@ func (c *NFSClient) chmod(args []string) []string {
 	return []string{styles.SuccessStyle.Render(fmt.Sprintf("Changed permissions of %s to %o", resolvedPath, mode))}
 }
 
+// batchState tracks shared counters across a multi-file transfer so that
+// every progressWriter in the batch can report global progress.
+type batchState struct {
+	fileIndex     *int   // current file number (1-based), incremented before each file
+	filesTotal    int    // total file count in the batch
+	globalWritten *int64 // cumulative bytes written across all files
+	globalTotal   int64  // pre-calculated total bytes (0 = unknown)
+}
+
 // NFS Operations - Download/Get
 
 func (c *NFSClient) get(args []string) []string {
@@ -248,6 +257,18 @@ func (c *NFSClient) get(args []string) []string {
 }
 
 func (c *NFSClient) downloadFile(remotePath, localPath string) []string {
+	return c.doDownloadFile(remotePath, localPath, filepath.Base(remotePath), nil)
+}
+
+// doDownloadFile is the shared implementation used by single-file and batch downloads.
+// batch == nil means a standalone single-file transfer.
+func (c *NFSClient) doDownloadFile(remotePath, localPath, name string, batch *batchState) []string {
+	// Best-effort file size for the progress bar
+	var fileTotal int64
+	if info, _, err := c.mount.Lookup(remotePath); err == nil {
+		fileTotal = info.Size()
+	}
+
 	file, err := c.mount.Open(remotePath)
 	if err != nil {
 		return []string{styles.ErrorStyle.Render(fmt.Sprintf("Error opening remote file: %v", err))}
@@ -255,16 +276,13 @@ func (c *NFSClient) downloadFile(remotePath, localPath string) []string {
 	defer file.Close()
 
 	finalLocalPath := localPath
-
 	if strings.HasSuffix(localPath, "/") {
 		finalLocalPath = filepath.Join(localPath, filepath.Base(remotePath))
-		err := os.MkdirAll(localPath, 0755)
-		if err != nil {
+		if err := os.MkdirAll(localPath, 0755); err != nil {
 			return []string{styles.ErrorStyle.Render(fmt.Sprintf("Error creating local directory: %v", err))}
 		}
 	} else {
-		info, err := os.Stat(localPath)
-		if err == nil && info.IsDir() {
+		if info, err := os.Stat(localPath); err == nil && info.IsDir() {
 			finalLocalPath = filepath.Join(localPath, filepath.Base(remotePath))
 		}
 	}
@@ -275,7 +293,21 @@ func (c *NFSClient) downloadFile(remotePath, localPath string) []string {
 	}
 	defer localFile.Close()
 
-	written, err := io.Copy(localFile, file)
+	cfg := progressWriterConfig{
+		filename:  name,
+		fileTotal: fileTotal,
+	}
+	if batch != nil {
+		*batch.fileIndex++
+		cfg.fileIndex     = *batch.fileIndex
+		cfg.filesTotal    = batch.filesTotal
+		cfg.globalWritten = batch.globalWritten
+		cfg.globalTotal   = batch.globalTotal
+	}
+
+	pw := newProgressWriter(localFile, cfg, c.progressFn)
+	written, err := io.Copy(pw, file)
+	pw.flush()
 	if err != nil {
 		return []string{styles.ErrorStyle.Render(fmt.Sprintf("Error downloading: %v", err))}
 	}
@@ -285,16 +317,31 @@ func (c *NFSClient) downloadFile(remotePath, localPath string) []string {
 }
 
 func (c *NFSClient) downloadRecursive(remoteDir, localDir string) []string {
+	// Pre-scan to get file count and total bytes for global progress
+	total, totalBytes := countRemoteFilesAndSize(c, remoteDir)
+	fileIndex := 0
+	globalWritten := int64(0)
+	batch := &batchState{
+		fileIndex:     &fileIndex,
+		filesTotal:    total,
+		globalWritten: &globalWritten,
+		globalTotal:   totalBytes,
+	}
 	var output []string
+	c.downloadRecursiveHelper(remoteDir, localDir, batch, &output)
+	return output
+}
 
-	err := os.MkdirAll(localDir, 0755)
-	if err != nil {
-		return []string{styles.ErrorStyle.Render(fmt.Sprintf("Error creating local dir: %v", err))}
+func (c *NFSClient) downloadRecursiveHelper(remoteDir, localDir string, batch *batchState, output *[]string) {
+	if err := os.MkdirAll(localDir, 0755); err != nil {
+		*output = append(*output, styles.ErrorStyle.Render(fmt.Sprintf("Error creating local dir: %v", err)))
+		return
 	}
 
 	entries, err := c.mount.ReadDirPlus(remoteDir)
 	if err != nil {
-		return []string{styles.ErrorStyle.Render(fmt.Sprintf("Error reading remote dir: %v", err))}
+		*output = append(*output, styles.ErrorStyle.Render(fmt.Sprintf("Error reading remote dir: %v", err)))
+		return
 	}
 
 	for _, entry := range entries {
@@ -302,20 +349,39 @@ func (c *NFSClient) downloadRecursive(remoteDir, localDir string) []string {
 		if name == "." || name == ".." {
 			continue
 		}
-
 		remotePath := path.Join(remoteDir, name)
 		localPath := filepath.Join(localDir, name)
-
 		if entry.IsDir() {
-			result := c.downloadRecursive(remotePath, localPath)
-			output = append(output, result...)
+			c.downloadRecursiveHelper(remotePath, localPath, batch, output)
 		} else {
-			result := c.downloadFile(remotePath, localPath)
-			output = append(output, result...)
+			result := c.doDownloadFile(remotePath, localPath, name, batch)
+			*output = append(*output, result...)
 		}
 	}
+}
 
-	return output
+// countRemoteFilesAndSize recursively counts files and sums their sizes under remoteDir.
+func countRemoteFilesAndSize(c *NFSClient, remoteDir string) (int, int64) {
+	entries, err := c.mount.ReadDirPlus(remoteDir)
+	if err != nil {
+		return 0, 0
+	}
+	count, total := 0, int64(0)
+	for _, entry := range entries {
+		name := entry.Name()
+		if name == "." || name == ".." {
+			continue
+		}
+		if entry.IsDir() {
+			subCount, subTotal := countRemoteFilesAndSize(c, path.Join(remoteDir, name))
+			count += subCount
+			total += subTotal
+		} else {
+			count++
+			total += entry.Size()
+		}
+	}
+	return count, total
 }
 
 func (c *NFSClient) mget(args []string) []string {
@@ -340,8 +406,7 @@ func (c *NFSClient) mget(args []string) []string {
 		destDir = c.localPath
 	}
 
-	err := os.MkdirAll(destDir, 0755)
-	if err != nil {
+	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return []string{styles.ErrorStyle.Render(fmt.Sprintf("Error creating destination directory: %v", err))}
 	}
 
@@ -350,31 +415,44 @@ func (c *NFSClient) mget(args []string) []string {
 		return []string{styles.ErrorStyle.Render(fmt.Sprintf("Error: %v", err))}
 	}
 
-	var output []string
-	matchCount := 0
-
+	// First pass: collect matched files and their sizes for global progress
+	type matchedEntry struct{ remote, local, name string }
+	var matched []matchedEntry
+	var totalBytes int64
 	for _, entry := range entries {
 		name := entry.Name()
-		matched, err := filepath.Match(pattern, name)
-		if err != nil {
+		ok, err := filepath.Match(pattern, name)
+		if err != nil || !ok || entry.IsDir() {
 			continue
 		}
-
-		if matched && !entry.IsDir() {
-			remotePath := path.Join(dir, name)
-			localPath := filepath.Join(destDir, name)
-			result := c.downloadFile(remotePath, localPath)
-			output = append(output, result...)
-			matchCount++
-		}
+		matched = append(matched, matchedEntry{
+			remote: path.Join(dir, name),
+			local:  filepath.Join(destDir, name),
+			name:   name,
+		})
+		totalBytes += entry.Size()
 	}
 
-	if matchCount == 0 {
-		output = append(output, styles.ErrorStyle.Render("No files matched pattern"))
-	} else {
-		output = append(output, styles.SuccessStyle.Render(fmt.Sprintf("Downloaded %d file(s)", matchCount)))
+	if len(matched) == 0 {
+		return []string{styles.ErrorStyle.Render("No files matched pattern")}
 	}
 
+	// Build batch state for global progress
+	fileIndex := 0
+	globalWritten := int64(0)
+	batch := &batchState{
+		fileIndex:     &fileIndex,
+		filesTotal:    len(matched),
+		globalWritten: &globalWritten,
+		globalTotal:   totalBytes,
+	}
+
+	var output []string
+	for _, f := range matched {
+		result := c.doDownloadFile(f.remote, f.local, f.name, batch)
+		output = append(output, result...)
+	}
+	output = append(output, styles.SuccessStyle.Render(fmt.Sprintf("Downloaded %d file(s)", len(matched))))
 	return output
 }
 
@@ -387,13 +465,11 @@ func (c *NFSClient) put(args []string) []string {
 	}
 
 	localPath := args[offset]
-
 	if !filepath.IsAbs(localPath) {
 		localPath = filepath.Join(c.localPath, localPath)
 	}
 
 	remotePath := filepath.Base(localPath)
-
 	if len(args) > offset+1 {
 		remotePath = args[offset+1]
 	}
@@ -401,11 +477,21 @@ func (c *NFSClient) put(args []string) []string {
 	if recursive {
 		return c.uploadRecursive(localPath, remotePath)
 	}
-
 	return c.uploadFile(localPath, remotePath)
 }
 
 func (c *NFSClient) uploadFile(localPath, remotePath string) []string {
+	return c.doUploadFile(localPath, remotePath, filepath.Base(localPath), nil)
+}
+
+// doUploadFile is the shared implementation used by single-file and batch uploads.
+// batch == nil means a standalone single-file transfer.
+func (c *NFSClient) doUploadFile(localPath, remotePath, name string, batch *batchState) []string {
+	var fileTotal int64
+	if info, err := os.Stat(localPath); err == nil {
+		fileTotal = info.Size()
+	}
+
 	localFile, err := os.Open(localPath)
 	if err != nil {
 		return []string{styles.ErrorStyle.Render(fmt.Sprintf("Error opening local file: %v", err))}
@@ -413,7 +499,6 @@ func (c *NFSClient) uploadFile(localPath, remotePath string) []string {
 	defer localFile.Close()
 
 	finalRemotePath := c.resolvePath(remotePath)
-
 	if strings.HasSuffix(remotePath, "/") {
 		finalRemotePath = path.Join(finalRemotePath, filepath.Base(localPath))
 	} else {
@@ -429,7 +514,21 @@ func (c *NFSClient) uploadFile(localPath, remotePath string) []string {
 	}
 	defer remoteFile.Close()
 
-	written, err := io.Copy(remoteFile, localFile)
+	cfg := progressWriterConfig{
+		filename:  name,
+		fileTotal: fileTotal,
+	}
+	if batch != nil {
+		*batch.fileIndex++
+		cfg.fileIndex     = *batch.fileIndex
+		cfg.filesTotal    = batch.filesTotal
+		cfg.globalWritten = batch.globalWritten
+		cfg.globalTotal   = batch.globalTotal
+	}
+
+	pw := newProgressWriter(remoteFile, cfg, c.progressFn)
+	written, err := io.Copy(pw, localFile)
+	pw.flush()
 	if err != nil {
 		return []string{styles.ErrorStyle.Render(fmt.Sprintf("Error uploading: %v", err))}
 	}
@@ -439,34 +538,63 @@ func (c *NFSClient) uploadFile(localPath, remotePath string) []string {
 }
 
 func (c *NFSClient) uploadRecursive(localDir, remoteDir string) []string {
-	var output []string
-
-	resolvedRemoteDir := c.resolvePath(remoteDir)
-
-	_, err := c.mount.Mkdir(resolvedRemoteDir, 0755)
-	if err != nil {
-		// Directory might already exist, continue
+	// Pre-scan to get file count and total bytes for global progress
+	total, totalBytes := countLocalFilesAndSize(localDir)
+	fileIndex := 0
+	globalWritten := int64(0)
+	batch := &batchState{
+		fileIndex:     &fileIndex,
+		filesTotal:    total,
+		globalWritten: &globalWritten,
+		globalTotal:   totalBytes,
 	}
+	var output []string
+	c.uploadRecursiveHelper(localDir, remoteDir, batch, &output)
+	return output
+}
+
+func (c *NFSClient) uploadRecursiveHelper(localDir, remoteDir string, batch *batchState, output *[]string) {
+	resolvedRemoteDir := c.resolvePath(remoteDir)
+	_, _ = c.mount.Mkdir(resolvedRemoteDir, 0755) // ignore error; dir may already exist
 
 	entries, err := os.ReadDir(localDir)
 	if err != nil {
-		return []string{styles.ErrorStyle.Render(fmt.Sprintf("Error reading local dir: %v", err))}
+		*output = append(*output, styles.ErrorStyle.Render(fmt.Sprintf("Error reading local dir: %v", err)))
+		return
 	}
 
 	for _, entry := range entries {
 		localPath := filepath.Join(localDir, entry.Name())
 		remotePath := path.Join(resolvedRemoteDir, entry.Name())
-
 		if entry.IsDir() {
-			result := c.uploadRecursive(localPath, remotePath)
-			output = append(output, result...)
+			c.uploadRecursiveHelper(localPath, remotePath, batch, output)
 		} else {
-			result := c.uploadFile(localPath, remotePath)
-			output = append(output, result...)
+			result := c.doUploadFile(localPath, remotePath, entry.Name(), batch)
+			*output = append(*output, result...)
 		}
 	}
+}
 
-	return output
+// countLocalFilesAndSize recursively counts files and sums their sizes under dir.
+func countLocalFilesAndSize(dir string) (int, int64) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0, 0
+	}
+	count, total := 0, int64(0)
+	for _, e := range entries {
+		if e.IsDir() {
+			subCount, subTotal := countLocalFilesAndSize(filepath.Join(dir, e.Name()))
+			count += subCount
+			total += subTotal
+		} else {
+			count++
+			if info, err := e.Info(); err == nil {
+				total += info.Size()
+			}
+		}
+	}
+	return count, total
 }
 
 func (c *NFSClient) mput(args []string) []string {
@@ -476,7 +604,6 @@ func (c *NFSClient) mput(args []string) []string {
 
 	pattern := args[0]
 	remotePath := c.CurrentPath
-
 	if len(args) > 1 {
 		remotePath = c.resolvePath(args[1])
 	}
@@ -488,36 +615,47 @@ func (c *NFSClient) mput(args []string) []string {
 		searchPattern = filepath.Join(c.localPath, pattern)
 	}
 
-	matches, err := filepath.Glob(searchPattern)
+	globs, err := filepath.Glob(searchPattern)
 	if err != nil {
 		return []string{styles.ErrorStyle.Render(fmt.Sprintf("Invalid pattern: %v", err))}
 	}
-
-	if len(matches) == 0 {
+	if len(globs) == 0 {
 		return []string{styles.ErrorStyle.Render("No files matched pattern")}
 	}
 
-	var output []string
-	uploadCount := 0
-	for _, localPath := range matches {
-		info, err := os.Stat(localPath)
+	// First pass: filter to regular files and sum sizes
+	type localFile struct{ path, name string }
+	var files []localFile
+	var totalBytes int64
+	for _, lp := range globs {
+		info, err := os.Stat(lp)
 		if err != nil || info.IsDir() {
 			continue
 		}
-
-		finalRemotePath := remotePath
-		if strings.HasSuffix(remotePath, "/") {
-			finalRemotePath = path.Join(remotePath, filepath.Base(localPath))
-		} else {
-			finalRemotePath = path.Join(remotePath, filepath.Base(localPath))
-		}
-
-		result := c.uploadFile(localPath, finalRemotePath)
-		output = append(output, result...)
-		uploadCount++
+		files = append(files, localFile{path: lp, name: filepath.Base(lp)})
+		totalBytes += info.Size()
+	}
+	if len(files) == 0 {
+		return []string{styles.ErrorStyle.Render("No files matched pattern")}
 	}
 
-	output = append(output, styles.SuccessStyle.Render(fmt.Sprintf("Uploaded %d file(s)", uploadCount)))
+	// Build batch state for global progress
+	fileIndex := 0
+	globalWritten := int64(0)
+	batch := &batchState{
+		fileIndex:     &fileIndex,
+		filesTotal:    len(files),
+		globalWritten: &globalWritten,
+		globalTotal:   totalBytes,
+	}
+
+	var output []string
+	for _, f := range files {
+		finalRemote := path.Join(remotePath, f.name)
+		result := c.doUploadFile(f.path, finalRemote, f.name, batch)
+		output = append(output, result...)
+	}
+	output = append(output, styles.SuccessStyle.Render(fmt.Sprintf("Uploaded %d file(s)", len(files))))
 	return output
 }
 

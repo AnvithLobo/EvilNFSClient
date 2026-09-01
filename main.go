@@ -110,7 +110,24 @@ func main() {
 
 	// Non-interactive mode
 	if command != "" {
+		// Inject a stderr progress reporter so the user sees activity
+		trimmedCmd := strings.TrimSpace(command)
+		arrow := "⬇"
+		if strings.HasPrefix(trimmedCmd, "put") || strings.HasPrefix(trimmedCmd, "mput") {
+			arrow = "⬆"
+		}
+		labelWidth, barWidth := nfs.ProgressLayout(nfs.TermWidth())
+		client.SetProgressFunc(func(u nfs.ProgressUpdate) {
+			bar := nfs.RenderFileProgress(u, labelWidth, barWidth)
+			fmt.Fprintf(os.Stderr, "\r%s %s", arrow, bar)
+		})
+
 		output := client.ExecuteCommand(command)
+
+		// Clear the progress line from stderr before printing results
+		client.SetProgressFunc(nil)
+		fmt.Fprintf(os.Stderr, "\r%s\r", strings.Repeat(" ", 80))
+
 		for _, line := range output {
 			fmt.Println(line)
 		}

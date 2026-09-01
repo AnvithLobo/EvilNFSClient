@@ -48,6 +48,8 @@ Repository: `github.com/AnvithLobo/EvilNFSClient`
   - [🔨 Build](#-build)
 - [⚙️ Usage \& options](#️-usage--options)
 - [💡 Tips \& behavior](#-tips--behavior)
+- [🛠️ Troubleshooting](#️-troubleshooting)
+  - [MNT3ERR\_ACCES on mount](#mnt3err_acces-on-mount)
 - [📌 Project Roadmap](#-project-roadmap)
 - [⚠️ Disclaimer](#️-disclaimer)
 - [👤 Author](#-author)
@@ -182,6 +184,10 @@ nfs> lls
 ./evilnfsclient 192.168.1.100 /shared --uid 0 --gid 0
 # Run a single command non-interactively
 ./evilnfsclient 192.168.1.100 /shared -c "ls /"
+# Connect using a privileged source port (needed for exports with the 'secure' option)
+sudo ./evilnfsclient 192.168.1.100 /shared -p
+# Privileged port with spoofed UID/GID
+sudo ./evilnfsclient 192.168.1.100 /shared -p --uid 0 --gid 0
 ```
 
 ---
@@ -238,9 +244,10 @@ go build -o evilnfsclient
 
 Options:
 
-* `--uid <uid>` — override UID
-* `--gid <gid>` — override GID
+* `--uid <uid>` / `-u` — override UID
+* `--gid <gid>` / `-g` — override GID
 * `-c <cmd>` — run command (non-interactive)
+* `-p` / `--privport` — bind to a privileged source port (< 1024); required when the NFS export uses the `secure` option
 
 ---
 
@@ -251,6 +258,26 @@ Options:
 * `~` expansion supported
 * PgUp/PgDn scrolls output
 * Use `-r` with caution (recursive delete!)
+
+---
+
+## 🛠️ Troubleshooting
+
+### MNT3ERR_ACCES on mount
+
+```
+Error: failed to mount /export/path: MNT3ERR_ACCES
+```
+
+This means the NFS server has the export configured with the **`secure`** option (the default on most Linux NFS servers). It requires the client to connect from a **source port below 1024**, which only root (or a process with `CAP_NET_BIND_SERVICE`) can bind to.
+
+**Fix — Use `sudo` with the `-p` flag:**
+
+```bash
+sudo evilnfsclient <server> <export> -p
+```
+
+When `-p` is not used and the error occurs, the tool will automatically print a hint with the exact commands to run.
 
 ---
 

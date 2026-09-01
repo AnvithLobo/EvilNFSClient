@@ -94,6 +94,17 @@ func main() {
 	client, err := nfs.NewNFSClient(server, export, uid, gid, *privPort)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		if strings.Contains(err.Error(), "MNT3ERR_ACCES") && !*privPort {
+			fmt.Fprintln(os.Stderr)
+			fmt.Fprintln(os.Stderr, styles.HelpArgStyle.Render("Hint:")+" "+styles.HelpDescStyle.Render("The server requires a privileged source port (< 1024)."))
+			fmt.Fprintln(os.Stderr, styles.HelpDescStyle.Render("      This is the NFS 'secure' export option — only root can bind to ports below 1024."))
+			fmt.Fprintln(os.Stderr)
+			fmt.Fprintln(os.Stderr, styles.HelpDescStyle.Render("  Try running with the -p / --privport flag (requires root or CAP_NET_BIND_SERVICE):"))
+			fmt.Fprintln(os.Stderr, styles.ExamplesSmallStyle.Render(fmt.Sprintf("    sudo evilnfsclient %s %s -p", server, export)))
+			fmt.Fprintln(os.Stderr)
+			fmt.Fprintln(os.Stderr, styles.HelpDescStyle.Render("  Or grant the capability once to avoid sudo:"))
+			fmt.Fprintln(os.Stderr, styles.ExamplesSmallStyle.Render("    sudo setcap 'cap_net_bind_service=+eip' $(which evilnfsclient)"))
+		}
 		os.Exit(1)
 	}
 
